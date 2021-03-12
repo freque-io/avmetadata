@@ -37,6 +37,7 @@ pub struct Stream {
 	// TODO(meh): side_data
 
 	pub codec: Codec,
+	pub data: Data,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -44,8 +45,6 @@ pub struct Codec {
 	pub id: codec::Id,
 	pub name: String,
 	pub description: String,
-
-	pub data: Data,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -109,70 +108,64 @@ impl Metadata {
 		};
 
 		let streams = input.streams().into_iter().flat_map(|stream| {
-			let codec = match stream.codec().medium() {
+			let (codec, data) = match stream.codec().medium() {
 				media::Type::Audio => {
 					let audio = stream.codec().decoder().audio().ok()?;
 
-					Codec {
+					(Codec {
 						id: audio.codec()?.id(),
 						name: audio.codec()?.name().into(),
 						description: audio.codec()?.description().into(),
-
-						data: Data::Audio(Audio {
-							bit_rate: audio.bit_rate(),
-							max_bit_rate: audio.max_bit_rate(),
-							delay: audio.delay(),
-							rate: audio.rate(),
-							channels: audio.channels(),
-							format: audio.format(),
-							frames: audio.frames(),
-							align: audio.align(),
-							channel_layout: audio.channel_layout(),
-							frame_start: audio.frame_start(),
-						})
-					}
+					}, Data::Audio(Audio {
+						bit_rate: audio.bit_rate(),
+						max_bit_rate: audio.max_bit_rate(),
+						delay: audio.delay(),
+						rate: audio.rate(),
+						channels: audio.channels(),
+						format: audio.format(),
+						frames: audio.frames(),
+						align: audio.align(),
+						channel_layout: audio.channel_layout(),
+						frame_start: audio.frame_start(),
+					}))
 				}
 
 				media::Type::Video => {
 					let video = stream.codec().decoder().video().ok()?;
 
-					Codec {
+					(Codec {
 						id: video.codec()?.id(),
 						name: video.codec()?.name().into(),
 						description: video.codec()?.description().into(),
-
-						data: Data::Video(Video {
-							bit_rate: video.bit_rate(),
-							max_bit_rate: video.max_bit_rate(),
-							delay: video.delay(),
-							width: video.width(),
-							height: video.height(),
-							format: video.format(),
-							has_b_frames: video.has_b_frames(),
-							aspect_ratio: video.aspect_ratio(),
-							color_space: video.color_space(),
-							color_range: video.color_range(),
-							color_primaries: video.color_primaries(),
-							color_transfer_characteristic: video.color_transfer_characteristic(),
-							chroma_location: video.chroma_location(),
-							references: video.references(),
-							intra_dc_precision: video.intra_dc_precision(),
-						})
-					}
+					}, Data::Video(Video {
+						bit_rate: video.bit_rate(),
+						max_bit_rate: video.max_bit_rate(),
+						delay: video.delay(),
+						width: video.width(),
+						height: video.height(),
+						format: video.format(),
+						has_b_frames: video.has_b_frames(),
+						aspect_ratio: video.aspect_ratio(),
+						color_space: video.color_space(),
+						color_range: video.color_range(),
+						color_primaries: video.color_primaries(),
+						color_transfer_characteristic: video.color_transfer_characteristic(),
+						chroma_location: video.chroma_location(),
+						references: video.references(),
+						intra_dc_precision: video.intra_dc_precision(),
+					}))
 				}
 
 				media::Type::Subtitle => {
 					let subtitle = stream.codec().decoder().subtitle().ok()?;
 
-					Codec {
+					(Codec {
 						id: subtitle.codec()?.id(),
 						name: subtitle.codec()?.name().into(),
 						description: subtitle.codec()?.description().into(),
+					}, Data::Subtitle(Subtitle {
 
-						data: Data::Subtitle(Subtitle {
-
-						})
-					}
+					}))
 				}
 
 				_ => return None
@@ -189,7 +182,7 @@ impl Metadata {
 				rate: stream.rate(),
 				avg_frame_rate: stream.avg_frame_rate(),
 
-				codec,
+				codec, data
 			})
 		})
 		.collect::<Vec<_>>();
