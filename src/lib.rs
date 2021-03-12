@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use ffmpeg::{format::{context::Input, stream::Disposition}, Discard, media, Rational};
+use ffmpeg::{format::{context::Input, stream::Disposition}, Discard, media, Rational, codec};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Metadata {
@@ -36,12 +36,21 @@ pub struct Stream {
 	pub avg_frame_rate: Rational,
 	// TODO(meh): side_data
 
-	codec: Codec,
+	pub codec: Codec,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Codec {
+	pub id: codec::Id,
+	pub name: String,
+	pub description: String,
+
+	pub data: Data,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
-pub enum Codec {
+pub enum Data {
 	Audio(Audio),
 	Video(Video),
 	Subtitle(Subtitle),
@@ -52,7 +61,7 @@ pub struct Audio {
 	pub bit_rate: usize,
 	pub max_bit_rate: usize,
 	pub delay: usize,
-	pub sample_rate: u32,
+	pub rate: u32,
 	pub channels: u16,
 	pub format: ffmpeg::format::Sample,
 	pub frames: usize,
@@ -104,45 +113,66 @@ impl Metadata {
 				media::Type::Audio => {
 					let audio = stream.codec().decoder().audio().ok()?;
 
-					Codec::Audio(Audio {
-						bit_rate: audio.bit_rate(),
-						max_bit_rate: audio.max_bit_rate(),
-						delay: audio.delay(),
-						sample_rate: audio.rate(),
-						channels: audio.channels(),
-						format: audio.format(),
-						frames: audio.frames(),
-						align: audio.align(),
-						channel_layout: audio.channel_layout(),
-						frame_start: audio.frame_start(),
-					})
+					Codec {
+						id: audio.codec()?.id(),
+						name: audio.codec()?.name().into(),
+						description: audio.codec()?.description().into(),
+
+						data: Data::Audio(Audio {
+							bit_rate: audio.bit_rate(),
+							max_bit_rate: audio.max_bit_rate(),
+							delay: audio.delay(),
+							rate: audio.rate(),
+							channels: audio.channels(),
+							format: audio.format(),
+							frames: audio.frames(),
+							align: audio.align(),
+							channel_layout: audio.channel_layout(),
+							frame_start: audio.frame_start(),
+						})
+					}
 				}
 
 				media::Type::Video => {
 					let video = stream.codec().decoder().video().ok()?;
 
-					Codec::Video(Video {
-						bit_rate: video.bit_rate(),
-						max_bit_rate: video.max_bit_rate(),
-						delay: video.delay(),
-						width: video.width(),
-						height: video.height(),
-						format: video.format(),
-						has_b_frames: video.has_b_frames(),
-						aspect_ratio: video.aspect_ratio(),
-						color_space: video.color_space(),
-						color_range: video.color_range(),
-						color_primaries: video.color_primaries(),
-						color_transfer_characteristic: video.color_transfer_characteristic(),
-						chroma_location: video.chroma_location(),
-						references: video.references(),
-						intra_dc_precision: video.intra_dc_precision(),
-					})
+					Codec {
+						id: video.codec()?.id(),
+						name: video.codec()?.name().into(),
+						description: video.codec()?.description().into(),
+
+						data: Data::Video(Video {
+							bit_rate: video.bit_rate(),
+							max_bit_rate: video.max_bit_rate(),
+							delay: video.delay(),
+							width: video.width(),
+							height: video.height(),
+							format: video.format(),
+							has_b_frames: video.has_b_frames(),
+							aspect_ratio: video.aspect_ratio(),
+							color_space: video.color_space(),
+							color_range: video.color_range(),
+							color_primaries: video.color_primaries(),
+							color_transfer_characteristic: video.color_transfer_characteristic(),
+							chroma_location: video.chroma_location(),
+							references: video.references(),
+							intra_dc_precision: video.intra_dc_precision(),
+						})
+					}
 				}
 
 				media::Type::Subtitle => {
-					Codec::Subtitle(Subtitle {
-					})
+					let subtitle = stream.codec().decoder().subtitle().ok()?;
+
+					Codec {
+						id: subtitle.codec()?.id(),
+						name: subtitle.codec()?.name().into(),
+						description: subtitle.codec()?.description().into(),
+
+						data: Data::Subtitle(Subtitle {
+
+						})
+					}
 				}
 
 				_ => return None
@@ -158,6 +188,7 @@ impl Metadata {
 				discard: stream.discard(),
 				rate: stream.rate(),
 				avg_frame_rate: stream.avg_frame_rate(),
+
 				codec,
 			})
 		})
