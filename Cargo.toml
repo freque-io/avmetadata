@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["meh. <meh@schizofreni.co>"]
 edition = "2018"
 
+[package.metadata.nix]
+buildInputs = ["ffmpeg-full"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", features = ["serde"] }
+ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", branch = "master", features = ["serde"] }
