@@ -1,43 +1,29 @@
 {
-  description = "avmetadata";
-
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     utils.url = "github:numtide/flake-utils";
-    naersk = {
-      url = "github:nmattia/naersk";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nixCargoIntegration = {
-      url = "github:yusdacra/nix-cargo-integration";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, utils, naersk, fenix, nixCargoIntegration }:
-    nixCargoIntegration.lib.makeOutputs {
-      root = ./.;
-      overrides = {
-        pkgs = common: prev: let
-          fenix' = fenix.packages."${common.system}";
-        in {
-          overlays = prev.overlays ++ [
-            (final: prevv: {
-              rustc = fenix'.latest.rustc;
-            })
-          ];
-        };
+  outputs = { self, utils, nixpkgs, fenix, }: utils.lib.eachDefaultSystem (system: let 
+    pkgs = nixpkgs.legacyPackages.${system};
+    rust = fenix.packages.${system};
+    lib = pkgs.lib;
+  in {
+    devShell = pkgs.mkShell {
+      buildInputs = with pkgs; with llvmPackages; with python37Packages; [
+        # For building.
+        clang rust.latest.toolchain pkg-config openssl libsodium libclang.lib
+        ffmpeg
+      ];
 
-        shell = common: prev: let
-          pkgs = nixpkgs.legacyPackages."${common.system}";
-          fenix' = fenix.packages."${common.system}";
-        in {
-          packages = prev.packages ++ [ fenix'.latest.toolchain ];
-        };
-      };
+      LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+      RUST_BACKTRACE = 1;
+      # RUST_LOG = "info,sqlx::query=warn";
+      RUSTFLAGS = "-C target-cpu=native";
     };
+  });
 }
