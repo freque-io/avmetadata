@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use ffmpeg::{
 	codec,
 	format::{context::Input, stream::Disposition},
@@ -10,11 +11,13 @@ pub struct Metadata {
 	pub format: Format,
 	pub best: Best,
 	pub streams: Vec<Stream>,
+	pub details: HashMap<String, String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Format {
 	pub name: String,
+	pub aliases: Vec<String>,
 	pub description: String,
 	pub extensions: Vec<String>,
 	pub mime_types: Vec<String>,
@@ -22,8 +25,8 @@ pub struct Format {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Best {
-	pub video: Option<usize>,
 	pub audio: Option<usize>,
+	pub video: Option<usize>,
 	pub subtitle: Option<usize>,
 }
 
@@ -97,7 +100,8 @@ pub struct Subtitle {}
 impl Metadata {
 	pub fn new(input: &Input) -> Self {
 		let format = Format {
-			name: input.format().name().into(),
+			name: input.format().name().split(",").next().unwrap().into(),
+			aliases: input.format().name().split(",").skip(1).map(String::from).collect(),
 			description: input.format().description().into(),
 			extensions: input
 				.format()
@@ -213,10 +217,13 @@ impl Metadata {
 			})
 			.collect::<Vec<_>>();
 
+		let details = input.metadata().iter().map(|(a, b)| (a.into(), b.into())).collect();
+
 		Metadata {
 			format,
 			best,
 			streams,
+			details,
 		}
 	}
 }
