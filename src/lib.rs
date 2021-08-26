@@ -42,7 +42,6 @@ pub struct Stream {
 	pub frame_rate: Rational,
 	pub avg_frame_rate: Rational,
 	// TODO(meh): side_data
-	pub codec: Codec,
 	pub content: Content,
 }
 
@@ -56,13 +55,20 @@ pub struct Codec {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub enum Content {
+	Unknown(Unknown),
 	Audio(Audio),
 	Video(Video),
+	Data(Data),
 	Subtitle(Subtitle),
+	Attachment(Attachment),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Unknown;
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Audio {
+	pub codec: Codec,
 	pub bit_rate: usize,
 	pub max_bit_rate: usize,
 	pub delay: usize,
@@ -77,6 +83,7 @@ pub struct Audio {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Video {
+	pub codec: Codec,
 	pub bit_rate: usize,
 	pub max_bit_rate: usize,
 	pub delay: usize,
@@ -95,10 +102,18 @@ pub struct Video {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Subtitle {}
+pub struct Data {}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Subtitle {
+	pub codec: Codec,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Attachment {}
 
 impl Metadata {
-	pub fn new(input: &Input) -> Self {
+	pub fn new(input: &Input) -> ffmpeg::Result<Self> {
 		let format = Format {
 			name: input.format().name().split(",").next().unwrap().into(),
 			aliases: input.format().name().split(",").skip(1).map(String::from).collect(),
@@ -129,78 +144,83 @@ impl Metadata {
 		let streams = input
 			.streams()
 			.into_iter()
-			.flat_map(|stream| {
-				let (codec, content) = match stream.codec().medium() {
-					media::Type::Audio => {
-						let audio = stream.codec().decoder().audio().ok()?;
+			.map(|stream| {
+				let content = match stream.codec().medium() {
+					media::Type::Unknown => {
+						Content::Unknown(Unknown)
+					}
 
-						(
-							Codec {
-								id: audio.codec()?.id(),
-								name: audio.codec()?.name().into(),
-								description: audio.codec()?.description().into(),
+					media::Type::Audio => {
+						let audio = stream.codec().decoder().audio()?;
+
+						Content::Audio(Audio {
+							codec: Codec {
+								id: audio.codec().ok_or(ffmpeg::Error::Bug)?.id(),
+								name: audio.codec().ok_or(ffmpeg::Error::Bug)?.name().into(),
+								description: audio.codec().ok_or(ffmpeg::Error::Bug)?.description().into(),
 							},
-							Content::Audio(Audio {
-								bit_rate: audio.bit_rate(),
-								max_bit_rate: audio.max_bit_rate(),
-								delay: audio.delay(),
-								sample_rate: audio.sample_rate(),
-								channels: audio.channels(),
-								format: audio.format(),
-								frames: audio.frames(),
-								align: audio.align(),
-								channel_layout: audio.channel_layout(),
-								frame_start: audio.frame_start(),
-							}),
-						)
+							bit_rate: audio.bit_rate(),
+							max_bit_rate: audio.max_bit_rate(),
+							delay: audio.delay(),
+							sample_rate: audio.sample_rate(),
+							channels: audio.channels(),
+							format: audio.format(),
+							frames: audio.frames(),
+							align: audio.align(),
+							channel_layout: audio.channel_layout(),
+							frame_start: audio.frame_start(),
+						})
 					}
 
 					media::Type::Video => {
-						let video = stream.codec().decoder().video().ok()?;
+						let video = stream.codec().decoder().video()?;
 
-						(
-							Codec {
-								id: video.codec()?.id(),
-								name: video.codec()?.name().into(),
-								description: video.codec()?.description().into(),
+						Content::Video(Video {
+							codec: Codec {
+								id: video.codec().ok_or(ffmpeg::Error::Bug)?.id(),
+								name: video.codec().ok_or(ffmpeg::Error::Bug)?.name().into(),
+								description: video.codec().ok_or(ffmpeg::Error::Bug)?.description().into(),
 							},
-							Content::Video(Video {
-								bit_rate: video.bit_rate(),
-								max_bit_rate: video.max_bit_rate(),
-								delay: video.delay(),
-								width: video.width(),
-								height: video.height(),
-								format: video.format(),
-								has_b_frames: video.has_b_frames(),
-								aspect_ratio: video.aspect_ratio(),
-								color_space: video.color_space(),
-								color_range: video.color_range(),
-								color_primaries: video.color_primaries(),
-								color_transfer_characteristic: video.color_transfer_characteristic(),
-								chroma_location: video.chroma_location(),
-								references: video.references(),
-								intra_dc_precision: video.intra_dc_precision(),
-							}),
-						)
+							bit_rate: video.bit_rate(),
+							max_bit_rate: video.max_bit_rate(),
+							delay: video.delay(),
+							width: video.width(),
+							height: video.height(),
+							format: video.format(),
+							has_b_frames: video.has_b_frames(),
+							aspect_ratio: video.aspect_ratio(),
+							color_space: video.color_space(),
+							color_range: video.color_range(),
+							color_primaries: video.color_primaries(),
+							color_transfer_characteristic: video.color_transfer_characteristic(),
+							chroma_location: video.chroma_location(),
+							references: video.references(),
+							intra_dc_precision: video.intra_dc_precision(),
+						})
+					}
+
+					media::Type::Data => {
+						Content::Data(Data { })
 					}
 
 					media::Type::Subtitle => {
-						let subtitle = stream.codec().decoder().subtitle().ok()?;
+						let subtitle = stream.codec().decoder().subtitle()?;
 
-						(
-							Codec {
-								id: subtitle.codec()?.id(),
-								name: subtitle.codec()?.name().into(),
-								description: subtitle.codec()?.description().into(),
+						Content::Subtitle(Subtitle {
+							codec: Codec {
+								id: subtitle.codec().ok_or(ffmpeg::Error::Bug)?.id(),
+								name: subtitle.codec().ok_or(ffmpeg::Error::Bug)?.name().into(),
+								description: subtitle.codec().ok_or(ffmpeg::Error::Bug)?.description().into(),
 							},
-							Content::Subtitle(Subtitle {}),
-						)
+						})
 					}
 
-					_ => return None,
+					media::Type::Attachment => {
+						Content::Attachment(Attachment { })
+					}
 				};
 
-				Some(Stream {
+				Ok(Stream {
 					index: stream.index(),
 					time_base: stream.time_base(),
 					start_time: stream.start_time(),
@@ -210,20 +230,18 @@ impl Metadata {
 					discard: stream.discard(),
 					frame_rate: stream.frame_rate(),
 					avg_frame_rate: stream.avg_frame_rate(),
-
-					codec,
 					content,
 				})
 			})
-			.collect::<Vec<_>>();
+			.collect::<ffmpeg::Result<Vec<_>>>()?;
 
 		let details = input.metadata().iter().map(|(a, b)| (a.into(), b.into())).collect();
 
-		Metadata {
+		Ok(Metadata {
 			format,
 			best,
 			streams,
 			details,
-		}
+		})
 	}
 }
